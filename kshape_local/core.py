@@ -19,6 +19,10 @@ def zscore(a, axis=0, ddof=0):
 
 
 def roll_zeropad(a, shift, axis=None):
+    '''
+    partial pad with zero
+    shift: < 0, pad right; > 0 pad left.
+    '''
     a = np.asanyarray(a)
     if shift == 0:
         return a
@@ -97,6 +101,7 @@ def _ncc_c_3dim(x, y):
 
 def _sbd(x, y):
     """
+    Shape-based distance, Algorithm 1
     >>> _sbd([1,1,1], [1,1,1])
     (-2.2204460492503131e-16, array([1, 1, 1]))
     >>> _sbd([0,1,2], [1,2,3])
@@ -114,6 +119,8 @@ def _sbd(x, y):
 
 def _extract_shape(idx, x, j, cur_center):
     """
+    update j-th centroids with current clustered results idx
+
     >>> _extract_shape(np.array([0,1,2]), np.array([[1,2,3], [4,5,6]]), 1, np.array([0,3,4]))
     array([-1.,  0.,  1.])
     >>> _extract_shape(np.array([0,1,2]), np.array([[-1,2,3], [4,-5,6]]), 1, np.array([0,3,4]))
@@ -129,9 +136,10 @@ def _extract_shape(idx, x, j, cur_center):
             if cur_center.sum() == 0:
                 opt_x = x[i]
             else:
-                _, opt_x = _sbd(cur_center, x[i])
+                _, opt_x = _sbd(cur_center, x[i]) # y' at SBD
             _a.append(opt_x)
     a = np.array(_a)
+    print('a.shape', a.shape, a)
 
     if len(a) == 0:
         return np.zeros((1, x.shape[1]))
@@ -197,6 +205,74 @@ def kshape(x, k, step=200):
                 series.append(j)
         clusters.append((centroid, series))
     return clusters
+
+
+def _multi_centroids_extract_shape(idx, x, j, cur_center, L):
+    '''
+    update all the centroids in j-th cluster, with the desired number L of centroids per cluster
+    '''
+    _a, _dists = [], []
+    m = x.shape[0]
+    for i in range(len(idx)):
+        if idx[i] == j:
+            if cur_center.sum() == 0:
+                opt_x = x[i]
+                dist_x = 0
+            else:
+                dist_x, opt_x = _sbd(cur_center, x[i])
+            _a.append(opt_x)
+            _dists.append(dist_x)
+    a, dists = np.array(_a), np.array(_dists)
+    if len(a) == 0:
+        return np.zeros((L, x.shape[1]))
+    
+    segs = [(j + 1) * 1.0 / (L + 1) for j in range(L)]
+    V = np.quantile(dists, segs)
+    for j in range(L):
+        new_x = []
+        for i in range(m):
+            if j == L - 1:
+                new_x.append(x[i])
+
+
+def _kmshape(x, k, L, step=200):
+    m = x.shape[0]
+    idx = randint(0, k, size=m)
+    centroids = np.zeros((k * L, x.shape[1]))
+    distances = np.empty((m, k * L))
+
+    _, C_org = _kshape(x, k, step=step) # initial kxL centroids with k-shape
+    for j in range(k):
+        for w in range(L):
+            centroids[w + j * L] = C_org[j]
+    
+    for _ in range(step):
+        old_idx = idx
+        for j in range(k):
+            C_tmp = _multi_centroids_extract_shape(idx, x, j, centroids[j * L], L) # list of length L
+            for w in range(L):
+                centroids[w + j * L] = C_tmp[w]
+
+        distances = (1 - _ncc_c_3dim(x, centroids).max(axis=2)).T
+
+        idx = distances.argmin(1)
+        idx = np.array(np.ceil(idx * 1.0 / L), dtype=np.int32)
+        if np.array_equal(old_idx, idx):
+            break
+    return idx, centroids
+
+
+def kmshape(x, k, L, step=200):
+    idx, centroids = _kmshape(np.array(x), k, L, step=step)
+    clusters = []
+    for i, centroid in enumerate(centroids):
+        series = []
+        for j, val in enumerate(idx):
+            if i == val:
+                series.append(j)
+        clusters.append((centroid, series))
+    return clusters
+
 
 if __name__ == "__main__":
     import sys
