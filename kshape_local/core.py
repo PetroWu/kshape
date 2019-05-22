@@ -212,7 +212,6 @@ def _multi_centroids_extract_shape(idx, x, j, cur_center, L):
     update all the centroids in j-th cluster, with the desired number L of centroids per cluster
     '''
     _a, _dists = [], []
-    m = x.shape[0]
     for i in range(len(idx)):
         if idx[i] == j:
             if cur_center.sum() == 0:
@@ -226,13 +225,32 @@ def _multi_centroids_extract_shape(idx, x, j, cur_center, L):
     if len(a) == 0:
         return np.zeros((L, x.shape[1]))
     
-    segs = [(j + 1) * 1.0 / (L + 1) for j in range(L)]
+    columns = a.shape[1]
+    centroids = np.zeros((L, columns))
+    p = np.empty((columns, columns))
+    p.fill(1.0/columns)
+    p = np.eye(columns) - p
+    segs = [(j + 1) * 1.0 / (L + 1) for j in range(L - 1)]
     V = np.quantile(dists, segs)
     for j in range(L):
         new_x = []
-        for i in range(m):
+        for xa, d in zip(a, dists):
             if j == L - 1:
-                new_x.append(x[i])
+                new_x.append(xa)
+            elif d <= V[j]:
+                new_x.append(xa)
+        y = zscore(new_x, axis=1, ddof=1)
+        s = np.dot(y.transpose(), y)
+        m = np.dot(np.dot(p, s), p)
+        _, vec = eigh(m)
+        centroid = vec[:, -1]
+        finddistance1 = math.sqrt(((a[0] - centroid) ** 2).sum())
+        finddistance2 = math.sqrt(((a[0] + centroid) ** 2).sum())
+
+        if finddistance1 >= finddistance2:
+            centroid *= -1
+        centroids[j] = centroid
+    return centroids
 
 
 def _kmshape(x, k, L, step=200):
@@ -256,22 +274,26 @@ def _kmshape(x, k, L, step=200):
         distances = (1 - _ncc_c_3dim(x, centroids).max(axis=2)).T
 
         idx = distances.argmin(1)
-        idx = np.array(np.ceil(idx * 1.0 / L), dtype=np.int32)
+        idx = np.array(np.floor(idx * 1.0 / L), dtype=np.int32)
         if np.array_equal(old_idx, idx):
             break
     return idx, centroids
 
 
+def kmshape_infer(x_list, L, centroids):
+    x = np.array(zscore(x_list))
+    distances = (1 - _ncc_c_3dim(x, centroids).max(axis=2)).T
+    print('->>>', distances.shape)
+    idx = distances.argmin(1)
+    print('->>>', idx)
+    idx = np.array(np.floor(idx * 1.0 / L), dtype=np.int32)
+    print('->>>', idx)
+    return idx
+
+
 def kmshape(x, k, L, step=200):
     idx, centroids = _kmshape(np.array(x), k, L, step=step)
-    clusters = []
-    for i, centroid in enumerate(centroids):
-        series = []
-        for j, val in enumerate(idx):
-            if i == val:
-                series.append(j)
-        clusters.append((centroid, series))
-    return clusters
+    return idx, centroids
 
 
 if __name__ == "__main__":
