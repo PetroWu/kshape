@@ -123,7 +123,7 @@ def knnca(series, weights=None, iter_steps=200, similarity_threshold=.5):
                 if tmp_sim > sim_max:
                     sim_max = tmp_sim
                     max_f = item
-        print(sim_max)
+        # print(sim_max)
         if sim_max > similarity_threshold:
             C_set[max_f].append(i)
         else:
