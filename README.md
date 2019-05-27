@@ -91,3 +91,6 @@ pp. 1855-1870. ISBN 978-1-4503-2758-9, http://doi.org/10.1145/2723372.2737793. '
   year         = {2017},
 }
 ```
+
+# KNNCA
+K-Line Patterns’ Predictive Power Analysis Using the Methods of Similarity Match and Clustering
